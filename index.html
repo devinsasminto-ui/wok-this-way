@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Wok This Way — Chinese Restaurant</title>
+    <meta name="description" content="Order dim sum, noodles, and Sichuan favorites. Add to cart, checkout, and sign up for offers. Demo-only; data stored locally in your browser." />
+
+    <!-- TailwindCSS via CDN (no build step) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: { extend: {} },
+        corePlugins: { preflight: true }
+      };
+    </script>
+
+    <!-- React 18 + ReactDOM UMD builds -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- Babel Standalone so we can write JSX in a single file for GitHub Pages -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body class="min-h-screen bg-neutral-50 text-neutral-900">
+    <noscript>
+      <div class="p-4 bg-yellow-100 text-yellow-900">This site requires JavaScript to run.</div>
+    </noscript>
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useEffect, useMemo, useState } = React;
+
+      // --- Dummy data -------------------------------------------------------------
+      const DISHES = [
+        { id: "ds1", name: "Xiaolongbao (Soup Dumplings)", price: 8.8, category: "Dim Sum", desc: "6 pcs. Pork & broth in delicate wrappers." },
+        { id: "ds2", name: "Har Gow (Shrimp Dumplings)", price: 7.5, category: "Dim Sum", desc: "4 pcs. Crystal shrimp dumplings." },
+        { id: "ds3", name: "Char Siu Bao (BBQ Pork Buns)", price: 6.9, category: "Dim Sum", desc: "3 pcs. Fluffy buns stuffed with BBQ pork." },
+        { id: "no1", name: "Beef Chow Fun", price: 12.9, category: "Noodles", desc: "Wok‑seared flat rice noodles, bean sprouts, scallions." },
+        { id: "no2", name: "Dan Dan Noodles", price: 11.5, category: "Noodles", desc: "Sichuan pepper, minced pork, sesame sauce, a touch of heat." },
+        { id: "no3", name: "Zhajiangmian", price: 10.9, category: "Noodles", desc: "Hand‑tossed noodles with savory soybean pork sauce." },
+        { id: "ri1", name: "Yangzhou Fried Rice", price: 10.5, category: "Rice", desc: "BBQ pork, shrimp, egg, peas, scallions." },
+        { id: "ri2", name: "Egg Fried Rice", price: 8.2, category: "Rice", desc: "Classic wok‑hei egg fried rice." },
+        { id: "ma1", name: "Kung Pao Chicken", price: 12.4, category: "Mains", desc: "Peanuts, chilies, bell pepper, sweet‑spicy sauce." },
+        { id: "ma2", name: "Mapo Tofu", price: 11.8, category: "Mains", desc: "Silky tofu, minced pork, Sichuan peppercorn." },
+        { id: "ma3", name: "Sweet & Sour Pork", price: 12.2, category: "Mains", desc: "Pineapple, bell pepper, tangy glaze." },
+        { id: "ma4", name: "Beef with Broccoli", price: 12.9, category: "Mains", desc: "Tender beef, crisp broccoli, oyster‑garlic sauce." },
+        { id: "vg1", name: "Garlic Stir‑Fried Bok Choy", price: 9.2, category: "Vegetables", desc: "Young bok choy, fragrant garlic." },
+        { id: "vg2", name: "Sautéed Green Beans", price: 9.6, category: "Vegetables", desc: "Dry‑fried with minced pork & chili." },
+        { id: "dr1", name: "Chrysanthemum Tea", price: 3.5, category: "Drinks", desc: "Lightly sweet floral tea." },
+        { id: "dr2", name: "Soy Milk", price: 2.9, category: "Drinks", desc: "House‑made, served cold." },
+      ];
+
+      const CATEGORIES = ["All", ...Array.from(new Set(DISHES.map((d) => d.category)))];
+
+      // --- Local Storage helpers --------------------------------------------------
+      const LS_KEYS = { CART: "wok_cart", SIGNUPS: "wok_signups", ORDERS: "wok_orders" };
+      const readLS = (k, fallback) => {
+        try { const v = JSON.parse(localStorage.getItem(k)); return v ?? fallback; } catch { return fallback; }
+      };
+      const writeLS = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+
+      // --- UI Helpers -------------------------------------------------------------
+      const currency = (n) => `$${n.toFixed(2)}`;
+
+      function Header({ onOpenSignup, onOpenCart }) {
+        return (
+          <header className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b">
+            <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🥡</span>
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Wok This Way</h1>
+                <span className="hidden sm:inline text-sm text-gray-500 ml-2">Modern Chinese Kitchen</span>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={onOpenSignup} className="px-3 py-2 rounded-xl bg-neutral-900 text-white hover:opacity-90">Sign Up</button>
+                <button onClick={onOpenCart} className="px-3 py-2 rounded-xl border hover:bg-gray-50">Cart</button>
+              </div>
+            </div>
+          </header>
+        );
+      }
+
+      function Hero() {
+        return (
+          <section className="bg-gradient-to-br from-orange-50 to-red-50 border-b">
+            <div className="mx-auto max-w-6xl px-4 py-10 grid gap-6 sm:grid-cols-2 items-center">
+              <div>
+                <h2 className="text-3xl sm:text-4xl font-extrabold leading-tight">Wok‑fired classics, delivered hot.</h2>
+                <p className="mt-3 text-gray-600">Order dim sum, noodles, and Sichuan favorites with a click. No accounts required — but members get perks.</p>
+                <ul className="mt-4 text-sm text-gray-600 list-disc list-inside">
+                  <li>10% off for members on first order</li>
+                  <li>Contactless pickup & local delivery</li>
+                  <li>Made fresh to order</li>
+                </ul>
+              </div>
+              <div className="justify-self-center">
+                <div className="aspect-[4/3] w-full max-w-md rounded-3xl bg-white shadow-xl border p-5 grid place-items-center">
+                  <div className="text-center">
+                    <div className="text-7xl">🍜</div>
+                    <p className="mt-2 text-gray-700 font-medium">Add your favorites & check out below</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        );
+      }
+
+      function DishCard({ dish, onAdd }) {
+        const [qty, setQty] = useState(1);
+        return (
+          <div className="rounded-2xl border bg-white p-4 shadow-sm hover:shadow-md transition">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="font-semibold text-lg">{dish.name}</h3>
+                <p className="text-sm text-gray-600">{dish.desc}</p>
+              </div>
+              <div className="text-right">
+                <div className="font-bold">{currency(dish.price)}</div>
+                <div className="text-xs text-gray-500">{dish.category}</div>
+              </div>
+            </div>
+            <div className="mt-3 flex items-center gap-3">
+              <label className="text-sm text-gray-700">Qty</label>
+              <input
+                type="number"
+                min={1}
+                value={qty}
+                onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))}
+                className="w-20 rounded-xl border px-2 py-1"
+              />
+              <button
+                onClick={() => onAdd(dish, qty)}
+                className="ml-auto px-3 py-2 rounded-xl bg-orange-600 text-white hover:bg-orange-700"
+              >
+                Add to Cart
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      function CartDrawer({ open, onClose, items, updateQty, removeItem, onCheckout }) {
+        const subtotal = items.reduce((s, it) => s + it.price * it.qty, 0);
+        const tax = subtotal * 0.08;
+        const total = subtotal + tax;
+
+        return (
+          <div className={`fixed inset-0 z-50 ${open ? "" : "pointer-events-none"}`}>
+            {/* Backdrop */}
+            <div
+              className={`absolute inset-0 bg-black/40 transition ${open ? "opacity-100" : "opacity-0"}`}
+              onClick={onClose}
+            />
+            {/* Panel */}
+            <aside className={`absolute right-0 top-0 h-full w-full sm:w-[420px] bg-white shadow-xl border-l p-4 transition-transform ${open ? "translate-x-0" : "translate-x-full"}`}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">Your Cart</h3>
+                <button onClick={onClose} className="rounded-lg border px-2 py-1">Close</button>
+              </div>
+              <div className="mt-4 space-y-3 overflow-y-auto max-h-[60vh] pr-1">
+                {items.length === 0 && <p className="text-gray-500">Your cart is empty.</p>}
+                {items.map((it) => (
+                  <div key={it.id} className="rounded-xl border p-3 flex items-start gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-medium">{it.name}</div>
+                          <div className="text-xs text-gray-500">{currency(it.price)} each</div>
+                        </div>
+                        <div className="font-semibold">{currency(it.price * it.qty)}</div>
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <input
+                          className="w-20 rounded-lg border px-2 py-1"
+                          type="number"
+                          min={1}
+                          value={it.qty}
+                          onChange={(e)=>updateQty(it.id, Math.max(1, Number(e.target.value)||1))}
+                        />
+                        <button onClick={()=>removeItem(it.id)} className="ml-auto text-sm text-red-600 hover:underline">Remove</button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 border-t pt-4 space-y-1 text-sm">
+                <div className="flex justify-between"><span>Subtotal</span><span>{currency(subtotal)}</span></div>
+                <div className="flex justify-between"><span>Tax (8%)</span><span>{currency(tax)}</span></div>
+                <div className="flex justify-between font-semibold text-base"><span>Total</span><span>{currency(total)}</span></div>
+              </div>
+              <button
+                disabled={items.length===0}
+                onClick={onCheckout}
+                className="mt-4 w-full px-4 py-3 rounded-xl bg-neutral-900 text-white disabled:opacity-40"
+              >
+                Proceed to Checkout
+              </button>
+            </aside>
+          </div>
+        );
+      }
+
+      function CheckoutModal({ open, onClose, onPlaceOrder, total }) {
+        const [form, setForm] = useState({ name: "", phone: "", address: "", method: "pickup" });
+        const [note, setNote] = useState("");
+        const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+        useEffect(() => { if (!open) { setForm({ name: "", phone: "", address: "", method: "pickup" }); setNote(""); } }, [open]);
+
+        return (
+          <div className={`fixed inset-0 z-[60] ${open ? "" : "pointer-events-none"}`}>
+            <div className={`absolute inset-0 bg-black/40 transition ${open ? "opacity-100" : "opacity-0"}`} onClick={onClose} />
+            <div className={`absolute left-1/2 top-1/2 w-[95vw] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white p-5 shadow-xl border transition ${open?"scale-100 opacity-100":"scale-95 opacity-0"}`}>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-lg font-semibold">Checkout</h3>
+                <button onClick={onClose} className="rounded-lg border px-2 py-1">Close</button>
+              </div>
+              <form className="space-y-3" onSubmit={(e)=>{ e.preventDefault(); onPlaceOrder({ ...form, note }); }}>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm">Full Name</label>
+                    <input required className="mt-1 w-full rounded-xl border px-3 py-2" value={form.name} onChange={(e)=>update("name", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-sm">Phone</label>
+                    <input required type="tel" className="mt-1 w-full rounded-xl border px-3 py-2" value={form.phone} onChange={(e)=>update("phone", e.target.value)} />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm">Address (for delivery)</label>
+                  <input className="mt-1 w-full rounded-xl border px-3 py-2" placeholder="123 Sesame St" value={form.address} onChange={(e)=>update("address", e.target.value)} />
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm">Method</label>
+                    <select className="mt-1 w-full rounded-xl border px-3 py-2" value={form.method} onChange={(e)=>update("method", e.target.value)}>
+                      <option value="pickup">Pickup</option>
+                      <option value="delivery">Delivery</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm">Payment</label>
+                    <select className="mt-1 w-full rounded-xl border px-3 py-2">
+                      <option>Cash</option>
+                      <option>Card</option>
+                      <option>Online</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm">Notes</label>
+                  <textarea className="mt-1 w-full rounded-xl border px-3 py-2" rows={3} placeholder="Extra chili, no peanuts, etc." value={note} onChange={(e)=>setNote(e.target.value)} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-600">Total to pay</div>
+                  <div className="text-lg font-semibold">{currency(total)}</div>
+                </div>
+                <button className="w-full rounded-xl bg-orange-600 text-white px-4 py-3 hover:bg-orange-700" type="submit">Place Order</button>
+              </form>
+            </div>
+          </div>
+        );
+      }
+
+      function SignupModal({ open, onClose, onSubmit }) {
+        const [form, setForm] = useState({ name: "", email: "", phone: "", birthday: "", marketing: true });
+        const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+        useEffect(() => { if (!open) setForm({ name: "", email: "", phone: "", birthday: "", marketing: true }); }, [open]);
+
+        return (
+          <div className={`fixed inset-0 z-[60] ${open ? "" : "pointer-events-none"}`}>
+            <div className={`absolute inset-0 bg-black/40 transition ${open ? "opacity-100" : "opacity-0"}`} onClick={onClose} />
+            <div className={`absolute left-1/2 top-1/2 w-[95vw] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white p-5 shadow-xl border transition ${open?"scale-100 opacity-100":"scale-95 opacity-0"}`}>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-lg font-semibold">Join Our Taste Buds Club</h3>
+                <button onClick={onClose} className="rounded-lg border px-2 py-1">Close</button>
+              </div>
+              <form className="space-y-3" onSubmit={(e)=>{ e.preventDefault(); onSubmit(form); }}>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm">Full Name</label>
+                    <input required className="mt-1 w-full rounded-xl border px-3 py-2" value={form.name} onChange={(e)=>update("name", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-sm">Email</label>
+                    <input required type="email" className="mt-1 w-full rounded-xl border px-3 py-2" value={form.email} onChange={(e)=>update("email", e.target.value)} />
+                  </div>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm">Phone</label>
+                    <input className="mt-1 w-full rounded-xl border px-3 py-2" value={form.phone} onChange={(e)=>update("phone", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-sm">Birthday</label>
+                    <input type="date" className="mt-1 w-full rounded-xl border px-3 py-2" value={form.birthday} onChange={(e)=>update("birthday", e.target.value)} />
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={form.marketing} onChange={(e)=>update("marketing", e.target.checked)} />
+                  I agree to receive tasty updates & promos
+                </label>
+                <button className="w-full rounded-xl bg-neutral-900 text-white px-4 py-3" type="submit">Sign Me Up</button>
+              </form>
+            </div>
+          </div>
+        );
+      }
+
+      function Footer() {
+        return (
+          <footer className="mt-16 border-t">
+            <div className="mx-auto max-w-6xl px-4 py-8 text-sm text-gray-600 grid sm:grid-cols-3 gap-6">
+              <div>
+                <div className="font-semibold">Wok This Way</div>
+                <div>123 Lantern Lane, Flavor Town</div>
+                <div>Open daily 11:00–21:30</div>
+              </div>
+              <div>
+                <div className="font-semibold">Contact</div>
+                <div>📞 (555) 888‑1688</div>
+                <div>✉️ hello@wokthisway.test</div>
+              </div>
+              <div>
+                <div className="font-semibold">All data is local</div>
+                <div>Sign‑ups & orders are saved to your browser only (localStorage).</div>
+              </div>
+            </div>
+          </footer>
+        );
+      }
+
+      function SignupList() {
+        const [list, setList] = useState(() => readLS(LS_KEYS.SIGNUPS, []));
+        useEffect(()=>{
+          const id = setInterval(()=>setList(readLS(LS_KEYS.SIGNUPS, [])), 1000);
+          return ()=>clearInterval(id);
+        },[]);
+        if (list.length === 0) return <div className="text-sm text-gray-500">No sign‑ups yet.</div>;
+        return (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-gray-500">
+                <tr>
+                  <th className="py-1 pr-2">Name</th>
+                  <th className="py-1 pr-2">Email</th>
+                  <th className="py-1 pr-2">Phone</th>
+                  <th className="py-1 pr-2">Birthday</th>
+                  <th className="py-1 pr-2">Opt‑in</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((s) => (
+                  <tr key={s.id} className="border-t">
+                    <td className="py-1 pr-2">{s.name}</td>
+                    <td className="py-1 pr-2">{s.email}</td>
+                    <td className="py-1 pr-2">{s.phone || "—"}</td>
+                    <td className="py-1 pr-2">{s.birthday || "—"}</td>
+                    <td className="py-1 pr-2">{s.marketing ? "Yes" : "No"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+
+      function OrdersList() {
+        const [orders, setOrders] = useState(() => readLS(LS_KEYS.ORDERS, []));
+        useEffect(()=>{
+          const id = setInterval(()=>setOrders(readLS(LS_KEYS.ORDERS, [])), 1000);
+          return ()=>clearInterval(id);
+        },[]);
+        if (orders.length === 0) return <div className="text-sm text-gray-500">No orders placed yet.</div>;
+        return (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-gray-500">
+                <tr>
+                  <th className="py-1 pr-2">Order #</th>
+                  <th className="py-1 pr-2">Items</th>
+                  <th className="py-1 pr-2">Total</th>
+                  <th className="py-1 pr-2">Customer</th>
+                  <th className="py-1 pr-2">Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((o) => (
+                  <tr key={o.id} className="border-t align-top">
+                    <td className="py-1 pr-2 whitespace-nowrap">{o.id}</td>
+                    <td className="py-1 pr-2">
+                      <ul className="list-disc list-inside">
+                        {o.items.map((it)=> (
+                          <li key={it.id}>{it.qty}× {it.name} — {currency(it.price * it.qty)}</li>
+                        ))}
+                      </ul>
+                    </td>
+                    <td className="py-1 pr-2">{currency(o.total)}</td>
+                    <td className="py-1 pr-2">
+                      <div className="font-medium">{o.customer.name}</div>
+                      <div className="text-gray-500">{o.customer.phone}</div>
+                      <div className="text-gray-500">{o.customer.method === "delivery" ? o.customer.address : "Pickup"}</div>
+                    </td>
+                    <td className="py-1 pr-2 whitespace-nowrap">{new Date(o.createdAt).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+
+      function App() {
+        // Cart state
+        const [cart, setCart] = useState(() => readLS(LS_KEYS.CART, []));
+        const [category, setCategory] = useState("All");
+        const [query, setQuery] = useState("");
+        const [cartOpen, setCartOpen] = useState(false);
+        const [checkoutOpen, setCheckoutOpen] = useState(false);
+        const [signupOpen, setSignupOpen] = useState(false);
+        const [toast, setToast] = useState(null);
+
+        useEffect(()=>{ writeLS(LS_KEYS.CART, cart); }, [cart]);
+
+        const addToCart = (dish, qty) => {
+          setCart((prev) => {
+            const found = prev.find((p) => p.id === dish.id);
+            if (found) return prev.map((p) => p.id === dish.id ? { ...p, qty: p.qty + qty } : p);
+            return [...prev, { id: dish.id, name: dish.name, price: dish.price, qty }];
+          });
+          setCartOpen(true);
+          flashToast(`${qty}× ${dish.name} added to cart`);
+        };
+
+        const updateQty = (id, qty) => setCart((prev) => prev.map((p) => p.id===id?{...p, qty}:p));
+        const removeItem = (id) => setCart((prev) => prev.filter((p)=>p.id!==id));
+
+        const filtered = useMemo(() => {
+          let list = DISHES;
+          if (category !== "All") list = list.filter((d) => d.category === category);
+          if (query.trim()) list = list.filter((d) => d.name.toLowerCase().includes(query.toLowerCase()));
+          return list;
+        }, [category, query]);
+
+        const subtotal = cart.reduce((s, it) => s + it.price * it.qty, 0);
+        const tax = subtotal * 0.08;
+        const total = subtotal + tax;
+
+        const placeOrder = (customer) => {
+          const order = { id: `ORD-${Date.now()}`, items: cart, total, customer, createdAt: new Date().toISOString() };
+          const orders = readLS(LS_KEYS.ORDERS, []);
+          writeLS(LS_KEYS.ORDERS, [order, ...orders]);
+          setCart([]);
+          setCheckoutOpen(false);
+          flashToast(`Order placed! #${order.id}`);
+        };
+
+        const handleSignup = (data) => {
+          const signups = readLS(LS_KEYS.SIGNUPS, []);
+          writeLS(LS_KEYS.SIGNUPS, [{ id: `CUST-${Date.now()}`, ...data, createdAt: new Date().toISOString() }, ...signups]);
+          setSignupOpen(false);
+          flashToast("Thanks for signing up! 10% off your first order.");
+        };
+
+        const flashToast = (text) => {
+          setToast(text);
+          setTimeout(()=>setToast(null), 2600);
+        };
+
+        return (
+          <div className="min-h-screen">
+            <Header onOpenSignup={()=>setSignupOpen(true)} onOpenCart={()=>setCartOpen(true)} />
+            <Hero />
+
+            <main className="mx-auto max-w-6xl px-4 py-10">
+              {/* Filters */}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex gap-2 overflow-x-auto">
+                  {CATEGORIES.map((c) => (
+                    <button
+                      key={c}
+                      onClick={()=>setCategory(c)}
+                      className={`px-3 py-2 rounded-xl border ${category===c?"bg-neutral-900 text-white":"bg-white hover:bg-gray-50"}`}
+                    >{c}</button>
+                  ))}
+                </div>
+                <div className="ml-auto flex items-center gap-2">
+                  <input
+                    placeholder="Search dishes…"
+                    className="w-64 max-w-[60vw] rounded-xl border px-3 py-2"
+                    value={query}
+                    onChange={(e)=>setQuery(e.target.value)}
+                  />
+                  <button onClick={()=>{ setQuery(""); setCategory("All"); }} className="px-3 py-2 rounded-xl border">Clear</button>
+                </div>
+              </div>
+
+              {/* Menu grid */}
+              <div className="mt-6 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filtered.map((dish) => (
+                  <DishCard key={dish.id} dish={dish} onAdd={addToCart} />
+                ))}
+              </div>
+
+              {/* Cart summary bar */}
+              <div className="mt-8 rounded-2xl border bg-white p-4 flex items-center gap-3 shadow-sm">
+                <div className="text-sm text-gray-600">{cart.length} items in cart</div>
+                <div className="ml-auto font-semibold">{currency(total)}</div>
+                <button onClick={()=>setCartOpen(true)} className="px-3 py-2 rounded-xl border">View Cart</button>
+                <button onClick={()=>setCheckoutOpen(true)} disabled={cart.length===0} className="px-3 py-2 rounded-xl bg-orange-600 text-white disabled:opacity-40">Checkout</button>
+              </div>
+
+              {/* Admin-ish viewer for demo */}
+              <section className="mt-12">
+                <h4 className="text-lg font-semibold mb-2">Demo Data Viewer</h4>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="rounded-2xl border bg-white p-4">
+                    <div className="font-medium mb-2">Saved Sign‑ups</div>
+                    <SignupList />
+                  </div>
+                  <div className="rounded-2xl border bg-white p-4">
+                    <div className="font-medium mb-2">Saved Orders</div>
+                    <OrdersList />
+                  </div>
+                </div>
+              </section>
+            </main>
+
+            <Footer />
+
+            <CartDrawer
+              open={cartOpen}
+              onClose={()=>setCartOpen(false)}
+              items={cart}
+              updateQty={(id, qty)=>setCart((prev)=>prev.map((p)=>p.id===id?{...p, qty}:p))}
+              removeItem={(id)=>setCart((prev)=>prev.filter((p)=>p.id!==id))}
+              onCheckout={()=>{ setCartOpen(false); setCheckoutOpen(true); }}
+            />
+
+            <CheckoutModal open={checkoutOpen} onClose={()=>setCheckoutOpen(false)} onPlaceOrder={placeOrder} total={total} />
+            <SignupModal open={signupOpen} onClose={()=>setSignupOpen(false)} onSubmit={handleSignup} />
+
+            {/* Toast */}
+            <div className={`fixed left-1/2 bottom-6 -translate-x-1/2 rounded-xl bg-black text-white px-4 py-2 shadow-lg transition ${toast?"opacity-100 translate-y-0":"opacity-0 translate-y-3"}`}>
+              {toast}
+            </div>
+          </div>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+  </body>
+</html>

@@ -22,6 +22,14 @@
     <!-- Babel Standalone so we can write JSX in a single file for GitHub Pages -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   </head>
+  <script src="https://cdn.amplitude.com/script/AMPLITUDE_API_KEY.js"></script>
+<script>
+  window.amplitude.init('dc2ed125bdc589ee7537a437f9c68147', {
+    fetchRemoteConfig: true,
+    autocapture: true
+  });
+</script>
+
   <body class="min-h-screen bg-neutral-50 text-neutral-900">
     <noscript>
       <div class="p-4 bg-yellow-100 text-yellow-900">This site requires JavaScript to run.</div>

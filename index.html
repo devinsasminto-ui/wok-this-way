@@ -32,12 +32,10 @@
     <script src="https://cdn.amplitude.com/script/dc2ed125bdc589ee7537a437f9c68147.engagement.js"></script>
     <script> 
     amplitude.add(window.engagement.plugin());
-  
-  // Listen for survey submission and reset it
-  window.engagement.addEventListener("[Guides-Surveys] Survey Submitted", (event) => {
+
+    window.engagement.addEventListener("[Guides-Surveys] Survey Submitted", (event) => {
     console.log('[Guides-Surveys] Survey Submitted', event);
     
-    // Correct syntax: pass parameters as regular function arguments, not as object
     window.engagement.gs.reset('survey-testing', 0);
   });
 </script>

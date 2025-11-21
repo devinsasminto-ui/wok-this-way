@@ -30,20 +30,8 @@
   });
 </script>
     <script src="https://cdn.amplitude.com/script/dc2ed125bdc589ee7537a437f9c68147.engagement.js"></script>
-<script>
-  amplitude.add(window.engagement.plugin());
-
-  window.engagement.ready(() => {
-  window.engagement.gs.registerCallback((event) => {
-    if (
-      event.type === 'survey' &&                 // or 'guide'
-      event.key === 'survey-testing' &&
-      event.status === 'completed'               // adjust to actual field
-    ) {
-      window.engagement.gs.reset('survey-testing', 0);
-    }
-  });
-});
+    <script> engagement.gs.reset(key: 'survey-testing', stepIndex?: 0) </script>
+    
 </script>
     <script src="https://cdn.amplitude.com/libs/analytics-browser-2.25.4-min.js.gz"></script>
     

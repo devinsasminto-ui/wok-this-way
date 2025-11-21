@@ -30,20 +30,21 @@
   });
 </script>
     <script src="https://cdn.amplitude.com/script/dc2ed125bdc589ee7537a437f9c68147.engagement.js"></script>
-    <script>  amplitude.add(window.engagement.plugin())</script>
-   <script>
-    const enrichPageUrlPlugin = (): EnrichmentPlugin => {
-  return {
+    <script>  
+amplitude.add(window.engagement.plugin())
+console.log('1111111');    
+const enrichPageUrlPlugin = (): EnrichmentPlugin => {
+  return { 
     execute: async (event: Event) => {
+console.log('event :', event);
       if(event.event_type === '[Guides-Surveys] Survey Submitted') {
-          console.log('aaaaaaaa');
+         console.log('3333333');
          window.engagement.gs.reset('survey-testing');
       }
       return event;
     },
   }
 }
-
 amplitude.add(enrichPageUrlPlugin());
 </script>
     

@@ -33,7 +33,18 @@
     <script> 
     amplitude.add(window.engagement.plugin());
     
-    engagement.gs.reset('survey-testing', 0);
+    const enrichPageUrlPlugin = (): EnrichmentPlugin => {
+  return {
+    execute: async (event: Event) => {
+      if(event.event_type === '[Guides-Surveys] Survey Submitted') {
+         window.engagement.gs.reset('survey-testing', 0);
+      }
+      return event;
+    },
+  }
+}
+
+amplitude.add(enrichPageUrlPlugin());
   });
 </script>
     

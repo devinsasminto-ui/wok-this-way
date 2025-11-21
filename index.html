@@ -31,17 +31,17 @@
 </script>
     <script src="https://cdn.amplitude.com/script/dc2ed125bdc589ee7537a437f9c68147.engagement.js"></script>
     <script>
-  amplitude.add(window.engagement.plugin());
+  // Create plugin instance and register it
+  const engagementPlugin = window.engagement.plugin();
+  amplitude.add(engagementPlugin);
 
-  // Listen for survey events
-  engagement.on("submit", (event) => {
+  // Listen for survey submit events from the plugin
+  engagementPlugin.on("submit", (event) => {
     console.log("[Guides-Surveys] Survey Completed", event);
-    
+
     // Reset the survey after each submission
-    window.engagement.gs.reset({
-      key: "survey-testing",
-      stepIndex: 0
-    });
+    // IMPORTANT: positional arguments, not an object
+    window.engagement.gs.reset("survey-testing", 0);
   });
 </script>
     

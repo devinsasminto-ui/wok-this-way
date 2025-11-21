@@ -31,16 +31,6 @@
 </script>
     <script src="https://cdn.amplitude.com/script/dc2ed125bdc589ee7537a437f9c68147.engagement.js"></script>
     <script>
-  // Create plugin instance and register it
-  const engagementPlugin = window.engagement.plugin();
-  amplitude.add(engagementPlugin);
-
-  // Listen for survey submit events from the plugin
-  engagementPlugin.on("Survey Submitted", (event) => {
-    console.log("Survey Submitted", event);
-
-    // Reset the survey after each submission
-    // IMPORTANT: positional arguments, not an object
     window.engagement.gs.reset("survey-testing", 0);
   });
 </script>

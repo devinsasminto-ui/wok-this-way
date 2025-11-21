@@ -36,7 +36,7 @@
   amplitude.add(engagementPlugin);
 
   // Listen for survey submit events from the plugin
-  engagementPlugin.on("submit", (event) => {
+  engagementPlugin.on("Survey Submitted", (event) => {
     console.log("Survey Submitted", event);
 
     // Reset the survey after each submission

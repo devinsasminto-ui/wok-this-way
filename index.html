@@ -33,8 +33,11 @@
 <script>
   amplitude.add(window.engagement.plugin());
 
-  // Correct reset call
-  window.engagement.gs.reset('survey-testing', 0);
+  window.engagement.ready(() => {
+    // Reset 'survey-testing' guide/survey to step 0 (first step)
+    window.engagement.gs.reset('survey-testing', 0);
+    // Or simply: window.engagement.gs.reset('survey-testing');
+  });
 </script>
     <script src="https://cdn.amplitude.com/libs/analytics-browser-2.25.4-min.js.gz"></script>
     

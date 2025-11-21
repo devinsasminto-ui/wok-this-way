@@ -36,7 +36,9 @@
     window.engagement.addEventListener("[Guides-Surveys] Survey Submitted", (event) => {
     console.log('[Guides-Surveys] Survey Submitted', event);
     
-    window.engagement.gs.reset('survey-testing', 0);
+    setTimeout(() => {
+  window.engagement.gs.reset('survey-testing', 0);
+ }, 0);
   });
 </script>
     

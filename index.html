@@ -268,18 +268,27 @@
 
       // Stable fallback object so the inline default doesn't re-trigger the
       // `useStatsigConfig` effect on every Hero render.
-      const HERO_PROMO_FALLBACK = { value: 10 };
+      // Dashboard JSON shape: { "promoConfig": <number> }
+      const PROMO_FALLBACK = { promoConfig: 5 };
+      const PROMO_DEFAULT = 5;
+
+      // Helper: pull a numeric discount out of the raw dynamic-config value,
+      // tolerating a couple of legacy key names so older dashboards still work.
+      const readPromoDiscount = (cfg) => {
+        if (cfg && typeof cfg.promoConfig === "number") return cfg.promoConfig;
+        if (cfg && typeof cfg.value === "number") return cfg.value;
+        return PROMO_DEFAULT;
+      };
 
       function Hero() {
         // Pull the sign-up promo from a Statsig dynamic config:
         //   const myStatsigClient = new StatsigClient(...)
         //   myStatsigClient.getDynamicConfig("sign_up_promo")
         // We expose the raw `.value` object via the useStatsigConfig hook below.
-        const promoConfig = useStatsigConfig("sign_up_promo", HERO_PROMO_FALLBACK);
-        const promoDiscount =
-          typeof promoConfig.value === "number" ? promoConfig.value : 10;
+        const promoConfig = useStatsigConfig("sign_up_promo", PROMO_FALLBACK);
+        const promoDiscount = readPromoDiscount(promoConfig);
         // Hide the promo bullet only if the dashboard explicitly turns it off
-        // (e.g. set `value` to 0 or add `enabled: false` to the config).
+        // (set `promoConfig` to 0, or add `enabled: false` to the config).
         const showPromo =
           promoConfig.enabled === false ? false : promoDiscount > 0;
 
@@ -632,11 +641,11 @@
         const [signupOpen, setSignupOpen] = useState(false);
         const [toast, setToast] = useState(null);
 
-        // Fetch promo discount config from Statsig dynamic config (default to 10).
-        // The config name is "sign_up_promo", and expects a key: "value" (percent integer).
+        // Fetch promo discount config from Statsig dynamic config (default to 5).
+        // The config name is "sign_up_promo", expecting `{ "promoConfig": <number> }`.
         // Use the same shared fallback ref as Hero so we don't re-fire the effect.
-        const promoConfig = useStatsigConfig("sign_up_promo", HERO_PROMO_FALLBACK);
-        const promoDiscount = typeof promoConfig.value === "number" ? promoConfig.value : 10;
+        const promoConfig = useStatsigConfig("sign_up_promo", PROMO_FALLBACK);
+        const promoDiscount = readPromoDiscount(promoConfig);
 
         useEffect(()=>{ writeLS(LS_KEYS.CART, cart); }, [cart]);
 

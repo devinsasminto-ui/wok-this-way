@@ -200,10 +200,17 @@
           let cancelled = false;
           function updateConfig() {
             const c = window.statsigClient;
-            if (!c || typeof c.getConfig !== "function") return;
+            // Prefer v3's `getDynamicConfig`; fall back to legacy `getConfig` if present.
+            const getter =
+              c && typeof c.getDynamicConfig === "function"
+                ? c.getDynamicConfig.bind(c)
+                : c && typeof c.getConfig === "function"
+                ? c.getConfig.bind(c)
+                : null;
+            if (!getter) return;
             let next = null;
             try {
-              const conf = c.getConfig(configName);
+              const conf = getter(configName);
               // Statsig v3 DynamicConfig exposes `.value`; older builds used `.getValue()`.
               if (conf && conf.value && typeof conf.value === "object") {
                 next = conf.value;
@@ -259,15 +266,22 @@
         );
       }
 
+      // Stable fallback object so the inline default doesn't re-trigger the
+      // `useStatsigConfig` effect on every Hero render.
+      const HERO_PROMO_FALLBACK = { value: 10 };
+
       function Hero() {
-        const ready = useStatsigReady();
-        // Example: gate the promo line on a Statsig feature gate called `show_first_order_promo`.
-        // If the gate doesn't exist or Statsig isn't ready, we fall back to showing it.
-        const showPromo = !ready
-          ? true
-          : (window.statsigClient.checkGate
-              ? window.statsigClient.checkGate('show_first_order_promo')
-              : true);
+        // Pull the sign-up promo from a Statsig dynamic config:
+        //   const myStatsigClient = new StatsigClient(...)
+        //   myStatsigClient.getDynamicConfig("sign_up_promo")
+        // We expose the raw `.value` object via the useStatsigConfig hook below.
+        const promoConfig = useStatsigConfig("sign_up_promo", HERO_PROMO_FALLBACK);
+        const promoDiscount =
+          typeof promoConfig.value === "number" ? promoConfig.value : 10;
+        // Hide the promo bullet only if the dashboard explicitly turns it off
+        // (e.g. set `value` to 0 or add `enabled: false` to the config).
+        const showPromo =
+          promoConfig.enabled === false ? false : promoDiscount > 0;
 
         return (
           <section className="bg-gradient-to-br from-orange-50 to-red-50 border-b">
@@ -276,7 +290,7 @@
                 <h2 className="text-3xl sm:text-4xl font-extrabold leading-tight">Wok‑fired classics, delivered hot.</h2>
                 <p className="mt-3 text-gray-600">Order dim sum, noodles, and Sichuan favorites with a click. No accounts required — but members get perks.</p>
                 <ul className="mt-4 text-sm text-gray-600 list-disc list-inside">
-                  {showPromo && <li>10% off for members on first order</li>}
+                  {showPromo && <li>{promoDiscount}% off for members on first order</li>}
                   <li>Contactless pickup & local delivery</li>
                   <li>Made fresh to order</li>
                 </ul>
@@ -618,9 +632,10 @@
         const [signupOpen, setSignupOpen] = useState(false);
         const [toast, setToast] = useState(null);
 
-        // Fetch promo discount config from Statsig dynamic config (default to 10)
-        // The config name is "sign_up_promo", and expects a key: "value" (percent integer)
-        const promoConfig = useStatsigConfig("sign_up_promo", { value: 10 });
+        // Fetch promo discount config from Statsig dynamic config (default to 10).
+        // The config name is "sign_up_promo", and expects a key: "value" (percent integer).
+        // Use the same shared fallback ref as Hero so we don't re-fire the effect.
+        const promoConfig = useStatsigConfig("sign_up_promo", HERO_PROMO_FALLBACK);
         const promoDiscount = typeof promoConfig.value === "number" ? promoConfig.value : 10;
 
         useEffect(()=>{ writeLS(LS_KEYS.CART, cart); }, [cart]);

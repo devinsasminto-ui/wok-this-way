@@ -190,36 +190,49 @@
         return value;
       };
 
-      // Dynamic config fetcher for Statsig configs
+      // Dynamic config fetcher for Statsig configs.
+      // NOTE: `fallback` is intentionally NOT in the dep array — callers usually
+      // pass an inline object literal (`{ value: 10 }`) which would be a new
+      // reference every render and cause an infinite update loop.
       const useStatsigConfig = (configName, fallback = {}) => {
         const [config, setConfig] = useState(fallback);
         useEffect(() => {
           let cancelled = false;
           function updateConfig() {
             const c = window.statsigClient;
-            if (!c || typeof c.getConfig !== "function") {
-              setConfig(fallback);
-              return;
-            }
-            let conf = {};
+            if (!c || typeof c.getConfig !== "function") return;
+            let next = null;
             try {
-              conf = c.getConfig(configName);
+              const conf = c.getConfig(configName);
+              // Statsig v3 DynamicConfig exposes `.value`; older builds used `.getValue()`.
+              if (conf && conf.value && typeof conf.value === "object") {
+                next = conf.value;
+              } else if (conf && typeof conf.getValue === "function") {
+                next = conf.getValue();
+              }
             } catch {
-              conf = fallback;
+              next = null;
             }
-            setConfig(conf && typeof conf.getValue === "function" ? conf.getValue() : {});
+            if (next == null) return;
+            setConfig((prev) => {
+              if (prev === next) return prev;
+              try {
+                if (JSON.stringify(prev) === JSON.stringify(next)) return prev;
+              } catch {}
+              return next;
+            });
           }
           (window.statsigReady || Promise.resolve()).then(() => {
             if (!cancelled) updateConfig();
           });
           const c = window.statsigClient;
-          const handler = () => !cancelled && updateConfig();
+          const handler = () => { if (!cancelled) updateConfig(); };
           if (c && typeof c.on === "function") c.on("values_updated", handler);
           return () => {
             cancelled = true;
             if (c && typeof c.off === "function") c.off("values_updated", handler);
-          }
-        }, [configName, fallback]);
+          };
+        }, [configName]);
         return config;
       };
 

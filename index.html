@@ -606,8 +606,8 @@
         const [toast, setToast] = useState(null);
 
         // Fetch promo discount config from Statsig dynamic config (default to 10)
-        // The config name is "first_order_discount", and expects a key: "value" (percent integer)
-        const promoConfig = useStatsigConfig("first_order_discount", { value: 10 });
+        // The config name is "sign_up_promo", and expects a key: "value" (percent integer)
+        const promoConfig = useStatsigConfig("sign_up_promo", { value: 10 });
         const promoDiscount = typeof promoConfig.value === "number" ? promoConfig.value : 10;
 
         useEffect(()=>{ writeLS(LS_KEYS.CART, cart); }, [cart]);

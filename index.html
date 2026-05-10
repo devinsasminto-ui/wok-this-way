@@ -22,33 +22,81 @@
     <!-- Babel Standalone so we can write JSX in a single file for GitHub Pages -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
+    <!-- Amplitude -->
     <script src="https://cdn.amplitude.com/script/dc2ed125bdc589ee7537a437f9c68147.js"></script>
-<script>
-  window.amplitude.init('dc2ed125bdc589ee7537a437f9c68147', {
-    fetchRemoteConfig: true,
-    autocapture: true
-  });
-</script>
+    <script>
+      window.amplitude.init('dc2ed125bdc589ee7537a437f9c68147', {
+        fetchRemoteConfig: true,
+        autocapture: true
+      });
+    </script>
     <script src="https://cdn.amplitude.com/script/dc2ed125bdc589ee7537a437f9c68147.engagement.js"></script>
-    <script>  
-    amplitude.add(window.engagement.plugin())
-</script>
-    
-    
-</script>
+    <script>
+      amplitude.add(window.engagement.plugin());
+    </script>
     <script src="https://cdn.amplitude.com/libs/analytics-browser-2.25.4-min.js.gz"></script>
-    
-<script src="https://cdn.amplitude.com/libs/plugin-session-replay-browser-1.22.2-min.js.gz"></script>
-<script>
-const sessionReplayTracking = window.sessionReplay.plugin();
-window.amplitude.add(sessionReplayTracking);
-window.amplitude.init('dc2ed125bdc589ee7537a437f9c68147')
-</script>
-<script src="https://cdn.amplitude.com/script/dc2ed125bdc589ee7537a437f9c68147.experiment.js"></script>
+    <script src="https://cdn.amplitude.com/libs/plugin-session-replay-browser-1.22.2-min.js.gz"></script>
+    <script>
+      const sessionReplayTracking = window.sessionReplay.plugin();
+      window.amplitude.add(sessionReplayTracking);
+      window.amplitude.init('dc2ed125bdc589ee7537a437f9c68147');
+    </script>
+    <script src="https://cdn.amplitude.com/script/dc2ed125bdc589ee7537a437f9c68147.experiment.js"></script>
 
+    <!-- Statsig JS Client SDK (https://docs.statsig.com/client/javascript-sdk) -->
+    <script src="https://cdn.jsdelivr.net/npm/@statsig/js-client@3/build/statsig-js-client.min.js"></script>
+    <script>
+      (function () {
+        const STATSIG_CLIENT_KEY = 'client-sxSKqKaCcGAQYBXWWt0I1s0E6W5zbvwFA8LoWJ3gaA2';
 
+        // Bail loudly if the CDN bundle didn't load (ad-blocker, offline, file:// CORS, etc.).
+        if (!window.Statsig || !window.Statsig.StatsigClient) {
+          console.error('[Statsig] SDK script did not load — window.Statsig is missing. ' +
+            'Check the network tab for the @statsig/js-client request.');
+          document.documentElement.setAttribute('data-statsig', 'sdk-missing');
+          window.statsigReady = Promise.resolve();
+          return;
+        }
+
+        // Build (or reuse) a stable user identifier so Statsig assignments are consistent.
+        const STATSIG_USER_KEY = 'wok_statsig_user_id';
+        let statsigUserID = localStorage.getItem(STATSIG_USER_KEY);
+        if (!statsigUserID) {
+          statsigUserID = 'guest-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+          localStorage.setItem(STATSIG_USER_KEY, statsigUserID);
+        }
+
+        const statsigUser = {
+          userID: statsigUserID,
+          custom: { app: 'wok-this-way' }
+        };
+
+        const { StatsigClient, LogLevel } = window.Statsig;
+        const statsigClient = new StatsigClient(STATSIG_CLIENT_KEY, statsigUser, {
+          environment: { tier: 'development' },
+          logLevel: (LogLevel && LogLevel.Debug) != null ? LogLevel.Debug : 'debug'
+        });
+
+        // Expose so React components and other scripts can call gates / experiments / events.
+        window.statsigClient = statsigClient;
+        document.documentElement.setAttribute('data-statsig', 'initializing');
+
+        window.statsigReady = statsigClient
+          .initializeAsync()
+          .then(() => {
+            console.log('%c[Statsig] initialized', 'color:#16a34a;font-weight:bold;', {
+              userID: statsigUserID,
+              sdkVersion: window.Statsig.SDK_VERSION || 'unknown'
+            });
+            document.documentElement.setAttribute('data-statsig', 'ready');
+          })
+          .catch((err) => {
+            console.error('[Statsig] init failed', err);
+            document.documentElement.setAttribute('data-statsig', 'failed');
+          });
+      })();
+    </script>
   </head>
-  
 
   <body class="min-h-screen bg-neutral-50 text-neutral-900">
     <noscript>
@@ -89,6 +137,28 @@ window.amplitude.init('dc2ed125bdc589ee7537a437f9c68147')
       };
       const writeLS = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 
+      // --- Statsig helpers --------------------------------------------------------
+      // Wait for Statsig to finish initializing, then run a callback.
+      const useStatsigReady = () => {
+        const [ready, setReady] = useState(false);
+        useEffect(() => {
+          let cancelled = false;
+          (window.statsigReady || Promise.resolve()).then(() => {
+            if (!cancelled) setReady(true);
+          });
+          return () => { cancelled = true; };
+        }, []);
+        return ready;
+      };
+
+      const logStatsigEvent = (name, value, metadata) => {
+        try {
+          window.statsigClient && window.statsigClient.logEvent(name, value, metadata);
+        } catch (err) {
+          console.warn('Statsig logEvent failed', err);
+        }
+      };
+
       // --- UI Helpers -------------------------------------------------------------
       const currency = (n) => `$${n.toFixed(2)}`;
 
@@ -111,6 +181,15 @@ window.amplitude.init('dc2ed125bdc589ee7537a437f9c68147')
       }
 
       function Hero() {
+        const ready = useStatsigReady();
+        // Example: gate the promo line on a Statsig feature gate called `show_first_order_promo`.
+        // If the gate doesn't exist or Statsig isn't ready, we fall back to showing it.
+        const showPromo = !ready
+          ? true
+          : (window.statsigClient.checkGate
+              ? window.statsigClient.checkGate('show_first_order_promo')
+              : true);
+
         return (
           <section className="bg-gradient-to-br from-orange-50 to-red-50 border-b">
             <div className="mx-auto max-w-6xl px-4 py-10 grid gap-6 sm:grid-cols-2 items-center">
@@ -118,7 +197,7 @@ window.amplitude.init('dc2ed125bdc589ee7537a437f9c68147')
                 <h2 className="text-3xl sm:text-4xl font-extrabold leading-tight">Wok‑fired classics, delivered hot.</h2>
                 <p className="mt-3 text-gray-600">Order dim sum, noodles, and Sichuan favorites with a click. No accounts required — but members get perks.</p>
                 <ul className="mt-4 text-sm text-gray-600 list-disc list-inside">
-                  <li>10% off for members on first order</li>
+                  {showPromo && <li>10% off for members on first order</li>}
                   <li>Contactless pickup & local delivery</li>
                   <li>Made fresh to order</li>
                 </ul>
@@ -461,6 +540,12 @@ window.amplitude.init('dc2ed125bdc589ee7537a437f9c68147')
           });
           setCartOpen(true);
           flashToast(`${qty}× ${dish.name} added to cart`);
+          logStatsigEvent('add_to_cart', dish.price * qty, {
+            dish_id: dish.id,
+            dish_name: dish.name,
+            category: dish.category,
+            qty: String(qty),
+          });
         };
 
         const updateQty = (id, qty) => setCart((prev) => prev.map((p) => p.id===id?{...p, qty}:p));
@@ -481,6 +566,11 @@ window.amplitude.init('dc2ed125bdc589ee7537a437f9c68147')
           const order = { id: `ORD-${Date.now()}`, items: cart, total, customer, createdAt: new Date().toISOString() };
           const orders = readLS(LS_KEYS.ORDERS, []);
           writeLS(LS_KEYS.ORDERS, [order, ...orders]);
+          logStatsigEvent('order_placed', total, {
+            order_id: order.id,
+            item_count: String(cart.reduce((n, it) => n + it.qty, 0)),
+            method: customer.method,
+          });
           setCart([]);
           setCheckoutOpen(false);
           flashToast(`Order placed! #${order.id}`);
@@ -489,6 +579,10 @@ window.amplitude.init('dc2ed125bdc589ee7537a437f9c68147')
         const handleSignup = (data) => {
           const signups = readLS(LS_KEYS.SIGNUPS, []);
           writeLS(LS_KEYS.SIGNUPS, [{ id: `CUST-${Date.now()}`, ...data, createdAt: new Date().toISOString() }, ...signups]);
+          logStatsigEvent('signup', null, {
+            email: data.email,
+            marketing_opt_in: String(!!data.marketing),
+          });
           setSignupOpen(false);
           flashToast("Thanks for signing up! 10% off your first order.");
         };

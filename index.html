@@ -192,13 +192,14 @@
 
       // Dynamic config fetcher for Statsig configs.
       // NOTE: `fallback` is intentionally NOT in the dep array — callers usually
-      // pass an inline object literal (`{ value: 10 }`) which would be a new
-      // reference every render and cause an infinite update loop.
+      // pass an inline object literal which would be a new reference every
+      // render and cause an infinite update loop.
       const useStatsigConfig = (configName, fallback = {}) => {
         const [config, setConfig] = useState(fallback);
+        const [raw, setRaw] = useState(null);
         useEffect(() => {
           let cancelled = false;
-          function updateConfig() {
+          function updateConfig(reason) {
             const c = window.statsigClient;
             // Prefer v3's `getDynamicConfig`; fall back to legacy `getConfig` if present.
             const getter =
@@ -207,19 +208,34 @@
                 : c && typeof c.getConfig === "function"
                 ? c.getConfig.bind(c)
                 : null;
-            if (!getter) return;
+            if (!getter) {
+              console.warn('[Statsig] no getDynamicConfig/getConfig method on client');
+              return;
+            }
             let next = null;
+            let conf = null;
             try {
-              const conf = getter(configName);
+              conf = getter(configName);
               // Statsig v3 DynamicConfig exposes `.value`; older builds used `.getValue()`.
               if (conf && conf.value && typeof conf.value === "object") {
                 next = conf.value;
               } else if (conf && typeof conf.getValue === "function") {
                 next = conf.getValue();
               }
-            } catch {
+            } catch (err) {
+              console.warn('[Statsig] getDynamicConfig threw', err);
               next = null;
             }
+            console.log('[Statsig] dynamic config read', {
+              configName,
+              reason,
+              raw: conf,
+              value: conf && conf.value,
+              ruleID: conf && conf.ruleID,
+              details: conf && conf.details,
+              resolvedValue: next,
+            });
+            if (!cancelled) setRaw({ conf, next, reason, at: Date.now() });
             if (next == null) return;
             setConfig((prev) => {
               if (prev === next) return prev;
@@ -230,16 +246,24 @@
             });
           }
           (window.statsigReady || Promise.resolve()).then(() => {
-            if (!cancelled) updateConfig();
+            if (!cancelled) updateConfig('initial');
           });
           const c = window.statsigClient;
-          const handler = () => { if (!cancelled) updateConfig(); };
+          const handler = () => { if (!cancelled) updateConfig('values_updated'); };
           if (c && typeof c.on === "function") c.on("values_updated", handler);
           return () => {
             cancelled = true;
             if (c && typeof c.off === "function") c.off("values_updated", handler);
           };
         }, [configName]);
+        // Stash debug info on the window so the debug panel can render it without
+        // needing every consumer to plumb it through props.
+        useEffect(() => {
+          if (!raw) return;
+          window.__statsigDebug = window.__statsigDebug || {};
+          window.__statsigDebug[configName] = raw;
+          window.dispatchEvent(new CustomEvent('statsig-debug-update', { detail: { configName, raw } }));
+        }, [raw, configName]);
         return config;
       };
 
@@ -586,6 +610,94 @@
         );
       }
 
+      function StatsigDebug({ configName }) {
+        const [tick, setTick] = useState(0);
+        useEffect(() => {
+          const onUpdate = (e) => {
+            if (!e.detail || e.detail.configName === configName) setTick((t) => t + 1);
+          };
+          window.addEventListener('statsig-debug-update', onUpdate);
+          return () => window.removeEventListener('statsig-debug-update', onUpdate);
+        }, [configName]);
+
+        const c = window.statsigClient;
+        const dbg = (window.__statsigDebug && window.__statsigDebug[configName]) || null;
+        const sdkStatus = document.documentElement.getAttribute('data-statsig') || 'unknown';
+        const methods = c
+          ? ['getDynamicConfig', 'getConfig', 'getExperiment', 'getFeatureGate', 'checkGate', 'updateUserAsync', 'on', 'off']
+              .filter((m) => typeof c[m] === 'function')
+          : [];
+
+        const refresh = async () => {
+          const client = window.statsigClient;
+          if (!client) return;
+          try {
+            if (typeof client.updateUserAsync === 'function') {
+              // Re-fetch latest values from Statsig for the same user.
+              const userID = localStorage.getItem('wok_statsig_user_id');
+              await client.updateUserAsync({
+                userID,
+                userAgent: navigator.userAgent,
+                locale: navigator.language,
+                custom: { app: 'wok-this-way' },
+              });
+            } else if (typeof client.refreshAsync === 'function') {
+              await client.refreshAsync();
+            }
+            window.dispatchEvent(new CustomEvent('statsig-debug-update', { detail: { configName } }));
+            setTick((t) => t + 1);
+          } catch (err) {
+            console.warn('[Statsig] refresh failed', err);
+          }
+        };
+
+        return (
+          <div className="text-xs space-y-2">
+            <div>
+              <span className="text-gray-500">SDK status:</span>{' '}
+              <span className="font-mono">{sdkStatus}</span>
+              {' · '}
+              <span className="text-gray-500">client methods:</span>{' '}
+              <span className="font-mono">{methods.length ? methods.join(', ') : '(none)'}</span>
+            </div>
+            <div>
+              <span className="text-gray-500">Config name:</span>{' '}
+              <span className="font-mono">{configName}</span>
+              {dbg && dbg.conf && (
+                <>
+                  {' · '}
+                  <span className="text-gray-500">ruleID:</span>{' '}
+                  <span className="font-mono">{String(dbg.conf.ruleID || '—')}</span>
+                </>
+              )}
+            </div>
+            <div>
+              <span className="text-gray-500">Raw value (`.value`):</span>
+              <pre className="mt-1 rounded-lg bg-neutral-900 text-neutral-100 p-2 overflow-x-auto">
+{JSON.stringify(dbg && dbg.conf ? dbg.conf.value : null, null, 2)}
+              </pre>
+            </div>
+            {dbg && dbg.conf && dbg.conf.details && (
+              <div>
+                <span className="text-gray-500">Eval details:</span>
+                <pre className="mt-1 rounded-lg bg-neutral-50 border p-2 overflow-x-auto">
+{JSON.stringify(dbg.conf.details, null, 2)}
+                </pre>
+              </div>
+            )}
+            <button
+              onClick={refresh}
+              className="px-3 py-1.5 rounded-lg border bg-white hover:bg-gray-50"
+            >
+              Re-fetch from Statsig
+            </button>
+            <div className="text-[11px] text-gray-500">
+              Last update: {dbg ? new Date(dbg.at).toLocaleTimeString() + ' (' + dbg.reason + ')' : '—'}
+            </div>
+          </div>
+        );
+      }
+
       function OrdersList() {
         const [orders, setOrders] = useState(() => readLS(LS_KEYS.ORDERS, []));
         useEffect(()=>{
@@ -763,6 +875,14 @@
                   <div className="rounded-2xl border bg-white p-4">
                     <div className="font-medium mb-2">Saved Orders</div>
                     <OrdersList />
+                  </div>
+                </div>
+                <div className="mt-4 rounded-2xl border bg-white p-4">
+                  <div className="font-medium mb-2">Statsig Dynamic Config debug — <span className="font-mono text-xs">sign_up_promo</span></div>
+                  <StatsigDebug configName="sign_up_promo" />
+                  <div className="mt-3 text-xs text-gray-500">
+                    Resolved discount used by UI:{' '}
+                    <span className="font-mono">{promoDiscount}%</span>
                   </div>
                 </div>
               </section>

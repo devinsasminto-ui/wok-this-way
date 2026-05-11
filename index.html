@@ -76,7 +76,7 @@
 
         const { StatsigClient, LogLevel } = window.Statsig;
         const statsigClient = new StatsigClient(STATSIG_CLIENT_KEY, statsigUser, {
-          environment: { tier: 'production' },
+          environment: { tier: 'development' },
           logLevel: (LogLevel && LogLevel.Debug) != null ? LogLevel.Debug : 'debug'
         });
 
@@ -173,7 +173,9 @@
           if (!c || typeof c.checkGate !== 'function') return fallback;
           try { return c.checkGate(gateName); } catch { return fallback; }
         };
-        const [value, setValue] = useState(read);
+        // Start with the caller-provided fallback so we never call `checkGate`
+        // before `initializeAsync()` has downloaded the latest rules.
+        const [value, setValue] = useState(fallback);
         useEffect(() => {
           let cancelled = false;
           (window.statsigReady || Promise.resolve()).then(() => {

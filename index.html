@@ -76,7 +76,7 @@
 
         const { StatsigClient, LogLevel } = window.Statsig;
         const statsigClient = new StatsigClient(STATSIG_CLIENT_KEY, statsigUser, {
-          environment: { tier: 'production' },
+          environment: { tier: 'development' },
           logLevel: (LogLevel && LogLevel.Debug) != null ? LogLevel.Debug : 'debug'
         });
 
@@ -192,6 +192,55 @@
         return value;
       };
 
+      // Parameter Store reader for Statsig.
+      // Statsig v3 exposes `client.getParameterStore(name)` which returns an
+      // object with `.get(paramName, fallback)` (and typed `getString` /
+      // `getNumber` / `getBoolean` variants). Like the other hooks here, we
+      // start with the caller-provided fallback so we never read a value
+      // before `initializeAsync()` has downloaded the latest rules.
+      const useStatsigParameter = (storeName, paramName, fallback) => {
+        const read = () => {
+          const c = window.statsigClient;
+          if (!c || typeof c.getParameterStore !== 'function') return fallback;
+          try {
+            const store = c.getParameterStore(storeName);
+            if (!store) return fallback;
+            if (typeof store.get === 'function') {
+              const v = store.get(paramName, fallback);
+              return v == null ? fallback : v;
+            }
+            if (typeof fallback === 'string' && typeof store.getString === 'function') {
+              return store.getString(paramName, fallback);
+            }
+            if (typeof fallback === 'number' && typeof store.getNumber === 'function') {
+              return store.getNumber(paramName, fallback);
+            }
+            if (typeof fallback === 'boolean' && typeof store.getBoolean === 'function') {
+              return store.getBoolean(paramName, fallback);
+            }
+            return fallback;
+          } catch (err) {
+            console.warn('[Statsig] getParameterStore threw', err);
+            return fallback;
+          }
+        };
+        const [value, setValue] = useState(fallback);
+        useEffect(() => {
+          let cancelled = false;
+          (window.statsigReady || Promise.resolve()).then(() => {
+            if (!cancelled) setValue(read());
+          });
+          const c = window.statsigClient;
+          const handler = () => { if (!cancelled) setValue(read()); };
+          if (c && typeof c.on === 'function') c.on('values_updated', handler);
+          return () => {
+            cancelled = true;
+            if (c && typeof c.off === 'function') c.off('values_updated', handler);
+          };
+        }, [storeName, paramName]);
+        return value;
+      };
+
       // Dynamic config fetcher for Statsig configs.
       // NOTE: `fallback` is intentionally NOT in the dep array — callers usually
       // pass an inline object literal which would be a new reference every
@@ -298,6 +347,13 @@
       const PROMO_FALLBACK = { promoConfig: 5 };
       const PROMO_DEFAULT = 5;
 
+      // Statsig Parameter Store coordinates for the hero headline.
+      // Create a Parameter Store named `homepage_copy` with a string
+      // parameter `hero_headline` in the Statsig dashboard.
+      const HERO_HEADLINE_STORE = 'homepage_copy';
+      const HERO_HEADLINE_PARAM = 'hero_headline';
+      const HERO_HEADLINE_DEFAULT = 'Wok\u2011fired classics, delivered hot.';
+
       // Helper: pull a numeric discount out of the raw dynamic-config value,
       // tolerating a couple of legacy key names so older dashboards still work.
       const readPromoDiscount = (cfg) => {
@@ -318,11 +374,19 @@
         const showPromo =
           promoConfig.enabled === false ? false : promoDiscount > 0;
 
+        // Pull the hero headline copy from a Statsig Parameter Store.
+        // Dashboard: Parameter Store `homepage_copy` → string param `hero_headline`.
+        const headline = useStatsigParameter(
+          HERO_HEADLINE_STORE,
+          HERO_HEADLINE_PARAM,
+          HERO_HEADLINE_DEFAULT
+        );
+
         return (
           <section className="bg-gradient-to-br from-orange-50 to-red-50 border-b">
             <div className="mx-auto max-w-6xl px-4 py-10 grid gap-6 sm:grid-cols-2 items-center">
               <div>
-                <h2 className="text-3xl sm:text-4xl font-extrabold leading-tight">Wok‑fired classics, delivered hot.</h2>
+                <h2 className="text-3xl sm:text-4xl font-extrabold leading-tight">{headline}</h2>
                 <p className="mt-3 text-gray-600">Order dim sum, noodles, and Sichuan favorites with a click. No accounts required — but members get perks.</p>
                 <ul className="mt-4 text-sm text-gray-600 list-disc list-inside">
                   {showPromo && <li>{promoDiscount}% off for members on first order</li>}

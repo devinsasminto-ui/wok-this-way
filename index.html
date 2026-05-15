@@ -241,6 +241,43 @@
         return value;
       };
 
+      // Experiment reader for Statsig.
+      // Statsig v3 exposes `client.getExperiment(name)` which returns a layer
+      // object with `.get(paramName, fallback)`. We use the same pre-init-safe
+      // pattern as the other hooks: start with `fallback`, then re-evaluate
+      // after `initializeAsync()` resolves, then live-update on
+      // `values_updated` (so the debug panel's "Re-fetch" can flip groups).
+      const useStatsigExperiment = (experimentName, paramName, fallback) => {
+        const read = () => {
+          const c = window.statsigClient;
+          if (!c || typeof c.getExperiment !== 'function') return fallback;
+          try {
+            const exp = c.getExperiment(experimentName);
+            if (!exp || typeof exp.get !== 'function') return fallback;
+            const v = exp.get(paramName, fallback);
+            return v == null ? fallback : v;
+          } catch (err) {
+            console.warn('[Statsig] getExperiment threw', err);
+            return fallback;
+          }
+        };
+        const [value, setValue] = useState(fallback);
+        useEffect(() => {
+          let cancelled = false;
+          (window.statsigReady || Promise.resolve()).then(() => {
+            if (!cancelled) setValue(read());
+          });
+          const c = window.statsigClient;
+          const handler = () => { if (!cancelled) setValue(read()); };
+          if (c && typeof c.on === 'function') c.on('values_updated', handler);
+          return () => {
+            cancelled = true;
+            if (c && typeof c.off === 'function') c.off('values_updated', handler);
+          };
+        }, [experimentName, paramName]);
+        return value;
+      };
+
       // Dynamic config fetcher for Statsig configs.
       // NOTE: `fallback` is intentionally NOT in the dep array — callers usually
       // pass an inline object literal which would be a new reference every
@@ -331,6 +368,15 @@
           HERO_KITCHEN_DEFAULT
         );
 
+        // Statsig experiment: vibrant sign-up button color drives clicks.
+        //   myStatsigClient.getExperiment("change_sign_up_button_color")
+        //     .get("color", "#171717")
+        const signupButtonColor = useStatsigExperiment(
+          SIGNUP_BUTTON_EXPERIMENT,
+          SIGNUP_BUTTON_COLOR_PARAM,
+          SIGNUP_BUTTON_COLOR_DEFAULT
+        );
+
         return (
           <header className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b">
             <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
@@ -340,7 +386,23 @@
                 <span className="hidden sm:inline text-sm text-gray-500 ml-2">{kitchenLabel}</span>
               </div>
               <div className="flex gap-2">
-                <button onClick={onOpenSignup} className="px-3 py-2 rounded-xl bg-neutral-900 text-white hover:opacity-90">Sign Up</button>
+                <button
+                  onClick={() => {
+                    // Primary metric for the `change_sign_up_button_color`
+                    // experiment. We tag the event with the resolved color so
+                    // the dashboard can sanity-check assignments alongside
+                    // the experiment exposure.
+                    logStatsigEvent('signup_button_click', null, {
+                      button_color: signupButtonColor,
+                      surface: 'header',
+                    });
+                    onOpenSignup();
+                  }}
+                  style={{ backgroundColor: signupButtonColor }}
+                  className="px-3 py-2 rounded-xl text-white hover:opacity-90"
+                >
+                  Sign Up
+                </button>
                 <button onClick={onOpenCart} className="px-3 py-2 rounded-xl border hover:bg-gray-50">Cart</button>
               </div>
             </div>
@@ -362,6 +424,15 @@
       const HERO_HEADLINE_DEFAULT = 'Wok\u2011fired classics, delivered hot.';
       const HERO_KITCHEN_PARAM = 'kitchen';
       const HERO_KITCHEN_DEFAULT = 'Modern Chinese Kitchen';
+
+      // Statsig experiment: `change_sign_up_button_color`.
+      // Hypothesis: a more vibrant sign-up button color increases the click
+      // rate by 50% among new users. The experiment exposes a `color`
+      // parameter (a CSS color string, e.g. "#dc2626"). Default matches the
+      // original Tailwind `bg-neutral-900`.
+      const SIGNUP_BUTTON_EXPERIMENT = 'change_sign_up_button_color';
+      const SIGNUP_BUTTON_COLOR_PARAM = 'color';
+      const SIGNUP_BUTTON_COLOR_DEFAULT = '#171717';
 
       // Helper: pull a numeric discount out of the raw dynamic-config value,
       // tolerating a couple of legacy key names so older dashboards still work.
